@@ -23,6 +23,21 @@ def setup_logger():
     return logger
 
 
+config = yaml.safe_load(open("config.yml"))
+logger = setup_logger()
+
+lotto_products = {
+    8: "Lotto",
+    10: "Mini-Lotto",
+    21: "Szybkie-600"
+}
+
+lotto_tt = {
+    "WAGER": "Kupon",
+    "VALIDATION": "Wygrana"
+}
+
+
 class LottoTransaction:
     def __init__(self, id, product, amount, time_local, time_utc, type):
         self.id = id
@@ -109,55 +124,58 @@ def setup_eod(date):
     return date.replace(hour=23, minute=59, second=59, microsecond=999999)
 
 
-config = yaml.safe_load(open("config.yml"))
-logger = setup_logger()
+def pretty_print(transactions):
+    wager_amount = 0
+    validation_amount = 0
 
-transactions = []
+    for t in transactions:
+        if t.type == "WAGER":
+            wager_amount += t.amount
+        elif t.type == "VALIDATION":
+            validation_amount += t.amount
 
-start_date = setup_bod(datetime(2020, 1, 1))
-end_date = setup_bod(datetime.now()) # setup_bod(datetime(2020, 7, 1))
+        print("{}\t{}\t\t{}\t{}\t{}".format(t.id, lotto_products[t.product], t.amount / 100,
+                                            timestamp_to_date(t.time_local),
+                                            lotto_tt[t.type]))
 
-logger.debug("Start date is `{}`".format(start_date))
-logger.debug("End date is `{}`".format(end_date))
+    print("Validation: {}".format(validation_amount / 100))
+    print("Wager: {}".format(wager_amount / 100))
 
-while True:
-    bod_date = setup_bod(start_date)
-    logger.debug("Begin of day is `{}`".format(bod_date))
-    eod_date = setup_eod(start_date)
-    logger.debug("End of day is `{}`".format(eod_date))
 
-    bod_timestamp = int(datetime.timestamp(bod_date)) * 1000
-    logger.debug("Begin of day timestamp is `{}`".format(bod_timestamp))
-    eod_timestamp = int(datetime.timestamp(eod_date)) * 1000
-    logger.debug("End of day timestamp is `{}`".format(eod_timestamp))
+def main():
+    transactions = []
 
-    response = get_transactions(bod_timestamp, eod_timestamp)
+    start_date = setup_bod(datetime(2020, 1, 1))
+    end_date = setup_bod(datetime.now())
 
-    if response.status_code == 200:
-        transactions += parse_transactions(response.text)
-    else:
-        print("Response != 200: {}".format(response.status_code))
+    logger.debug("Start date is `{}`".format(start_date))
+    logger.debug("End date is `{}`".format(end_date))
 
-    if start_date == end_date:
-        break
+    while True:
+        bod_date = setup_bod(start_date)
+        logger.debug("Begin of day is `{}`".format(bod_date))
+        eod_date = setup_eod(start_date)
+        logger.debug("End of day is `{}`".format(eod_date))
 
-    start_date += timedelta(days=1)
+        bod_timestamp = int(datetime.timestamp(bod_date)) * 1000
+        logger.debug("Begin of day timestamp is `{}`".format(bod_timestamp))
+        eod_timestamp = int(datetime.timestamp(eod_date)) * 1000
+        logger.debug("End of day timestamp is `{}`".format(eod_timestamp))
 
-wager_amount = 0
-validation_amount = 0
+        response = get_transactions(bod_timestamp, eod_timestamp)
 
-print("\n")
-print("ID\t\tProduct\t\tAmount\tDate\t\t\tType")
-print("-----------------------------------------------------------------------------")
+        if response.status_code == 200:
+            transactions += parse_transactions(response.text)
+        else:
+            logger.error("Response HTTP code is not correct, HTTP code {}".format(response.status_code))
 
-for t in transactions:
-    if t.type == "WAGER":
-        wager_amount += t.amount
-    elif t.type == "VALIDATION":
-        validation_amount += t.amount
+        if start_date == end_date:
+            break
 
-    print("{}\t{}\t\t{}\t{}\t{}".format(t.id, t.product, t.amount, timestamp_to_date(t.time_local), t.type))
+        start_date += timedelta(days=1)
 
-print("\n")
-print("Validation: {}".format(validation_amount / 100))
-print("Wager\t: {}".format(wager_amount / 100))
+    pretty_print(transactions)
+
+
+if __name__ == "__main__":
+    main()
